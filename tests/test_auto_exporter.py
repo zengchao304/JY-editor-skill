@@ -51,6 +51,7 @@ class TestAutoExporterHelpers(unittest.TestCase):
         boxes = _extract_ocr_text_boxes(ocr_result)
         self.assertEqual(len(boxes), 2)
         self.assertEqual((boxes[0].center_x, boxes[0].center_y), (60, 30))
+        self.assertEqual(boxes[0].left_x, 10)
         self.assertEqual(_find_exact_ocr_match(ocr_result, "示例草稿"), boxes[0])
         self.assertIsNone(_find_exact_ocr_match(ocr_result, "示例"))
 
@@ -75,6 +76,7 @@ class TestAutoExporterHelpers(unittest.TestCase):
         self.assertEqual(len(boxes), 2)
         self.assertEqual(boxes[0].text, "Hello JianYing_V3")
         self.assertEqual((boxes[0].center_x, boxes[0].center_y), (114, 70))
+        self.assertEqual(boxes[0].left_x, 65)
         self.assertEqual(_find_exact_text_box(boxes, "Hello_JianYing_V3"), boxes[0])
 
     def test_build_paddle_ocr_disables_mkldnn_when_supported(self):
@@ -175,7 +177,7 @@ class TestAutoExporterHelpers(unittest.TestCase):
                 ocr_backend="auto",
             )
 
-        self.assertEqual(center, (160, 230))
+        self.assertEqual(center, (95, 230))
 
     def test_ocr_find_draft_center_passes_debug_dir_without_breaking_match(self):
         class FakePyAutoGui:
@@ -222,7 +224,7 @@ class TestAutoExporterHelpers(unittest.TestCase):
                 debug_dir="debug-out",
             )
 
-        self.assertEqual(center, (160, 230))
+        self.assertEqual(center, (95, 230))
         debug_mock.assert_called_once()
 
 

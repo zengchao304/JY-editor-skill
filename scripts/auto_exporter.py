@@ -23,6 +23,10 @@ class OcrTextBox:
     center_y: int
     box: tuple[tuple[float, float], ...]
 
+    @property
+    def left_x(self) -> int:
+        return round(min(point[0] for point in self.box))
+
 
 def _step_log(step: int, message: str) -> None:
     print(f"INFO: [Step {step}] {message}")
@@ -395,12 +399,13 @@ def _ocr_find_draft_center(
             f"OCR 后端={used_backend}，识别到: {found or '空'}"
         )
 
-    absolute_x = region[0] + match.center_x
+    click_offset_x = 15
+    absolute_x = region[0] + match.left_x - click_offset_x
     absolute_y = region[1] + match.center_y
     _step_log(
         2,
         f"命中草稿: {match.text}，OCR 后端={used_backend}，"
-        f"置信度={match.score:.3f}，坐标=({absolute_x}, {absolute_y})",
+        f"置信度={match.score:.3f}，点击坐标=({absolute_x}, {absolute_y})",
     )
     return absolute_x, absolute_y
 
