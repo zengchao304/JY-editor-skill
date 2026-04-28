@@ -113,6 +113,8 @@ pip install -r requirements.txt
 playwright install chromium
 ```
 
+Windows 下如果你要使用 OCR/CV 自动导出，建议优先使用 **Python 3.11** 虚拟环境。我们实测 `paddleocr==2.9.1 + paddlepaddle==3.2.2` 可初始化，而部分 Windows 环境上的 `paddle` 新版本或 `Python 3.12` 组合可能在 CPU 推理阶段触发 oneDNN/MKLDNN 错误。
+
 
 ### 2. 确认剪映安装位置
 Skill 默认认为您的剪映安装在 C 盘默认位置：
@@ -138,10 +140,12 @@ Skill 默认认为您的剪映安装在 C 盘默认位置：
    自动导出脚本模拟了鼠标键盘操作。
    - 运行导出时，请**不要**动鼠标和键盘。
    - 目前仅支持 **剪映 5.9 或更早版本** (新版本弹窗太多容易干扰脚本)。
+   - Windows 上 OCR/CV 模式建议使用 **Python 3.11** 虚拟环境，并安装仓库内固定版本依赖。
+   - 如果 `paddleocr` 在你机器上触发 `OneDnnContext` / `fused_conv2d` 之类的 CPU 推理错误，优先改用 `--ocr-backend rapidocr`。
    - 如果 OCR/CV 模式识别不到首页草稿列表，先在剪映首页运行 ROI 测量工具，拖拽草稿列表区域并记录输出：
      `python scripts/measure_ocr_roi.py --output anchors/draft_roi.png`
    - 新版自绘界面可尝试 OCR/CV 模式：先截取编辑器时间轴锚点和导出完成锚点，再运行：
-     `python scripts/auto_exporter.py "草稿名" --ocr-cv --timeline-icon anchors/timeline_icon.png --export-done-icon anchors/export_done_icon.png --draft-roi 320,250,1280,650 --json`
+     `python scripts/auto_exporter.py "草稿名" --ocr-cv --ocr-backend rapidocr --timeline-icon anchors/timeline_icon.png --export-done-icon anchors/export_done_icon.png --draft-roi 320,250,1280,650 --json`
 
 ## 🔄 如何更新 (Update)
 
