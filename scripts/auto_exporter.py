@@ -47,6 +47,18 @@ def _import_gui_dependencies() -> tuple[Any, Any, Any, Any, Any]:
     return cv2, np, pyautogui, gw, PaddleOCR
 
 
+def _import_rapidocr() -> Any:
+    try:
+        from rapidocr_onnxruntime import RapidOCR
+    except ImportError as exc:
+        missing = getattr(exc, "name", str(exc))
+        raise UserInputError(
+            "RapidOCR 自动导出依赖未安装: "
+            f"{missing}。请先运行 `pip install rapidocr-onnxruntime onnxruntime`。"
+        ) from exc
+    return RapidOCR
+
+
 def _import_draft_module() -> Any:
     try:
         import pyJianYingDraft as draft_module
@@ -89,6 +101,11 @@ def _build_paddle_ocr() -> Any:
     if last_error is not None:
         raise last_error
     return paddle_ocr(use_angle_cls=False, lang="ch")
+
+
+def _build_rapidocr() -> Any:
+    rapid_ocr = _import_rapidocr()
+    return rapid_ocr()
 
 
 def _default_draft_roi(screen_width: int, screen_height: int) -> tuple[int, int, int, int]:
@@ -221,10 +238,52 @@ def _find_exact_ocr_match(ocr_result: Any, draft_name: str) -> OcrTextBox | None
     return None
 
 
+def _extract_rapidocr_text_boxes(ocr_result: Any) -> list[OcrTextBox]:
+    boxes = getattr(ocr_result, "boxes", None)
+    txts = getattr(ocr_result, "txts", None)
+    scores = getattr(ocr_result, "scores", None)
+    if boxes is None or txts is None:
+        return []
+
+    normalized_scores = scores if scores is not None else [1.0] * len(txts)
+    extracted: list[OcrTextBox] = []
+    for box, text, score in zip(boxes, txts, normalized_scores):
+        try:
+            center_x, center_y = _box_center(box)
+            normalized_box = tuple((float(point[0]), float(point[1])) for point in box)
+            normalized_score = float(score)
+        except (TypeError, ValueError):
+            continue
+        extracted.append(
+            OcrTextBox(
+                text=str(text).strip(),
+                score=normalized_score,
+                center_x=center_x,
+                center_y=center_y,
+                box=normalized_box,
+            )
+        )
+    return extracted
+
+
+def _find_exact_text_box(boxes: list[OcrTextBox], draft_name: str) -> OcrTextBox | None:
+    target = draft_name.strip()
+    for text_box in boxes:
+        if text_box.text == target:
+            return text_box
+    return None
+
+
+def _is_onednn_runtime_error(exc: Exception) -> bool:
+    message = str(exc)
+    return "OneDnnContext" in message or "fused_conv2d" in message
+
+
 def _ocr_find_draft_center(
     draft_name: str,
     region: tuple[int, int, int, int] | None = None,
     ocr_engine: Any | None = None,
+    ocr_backend: str = "auto",
 ) -> tuple[int, int]:
     cv2, np, pyautogui, _, _ = _import_gui_dependencies()
     if region is None:
@@ -234,26 +293,61 @@ def _ocr_find_draft_center(
     _step_log(2, f"正在局部区域 OCR 寻找草稿: {draft_name}，ROI={region}")
     screenshot = pyautogui.screenshot(region=region)
     image = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
-    engine = ocr_engine or _build_paddle_ocr()
+
+    def _run_paddle(engine: Any) -> list[OcrTextBox]:
+        try:
+            result = engine.ocr(image, cls=False)
+        except Exception as exc:
+            if _is_onednn_runtime_error(exc):
+                raise RuntimeError(
+                    "PaddleOCR 在当前环境触发了 oneDNN/MKLDNN 卷积推理错误。"
+                ) from exc
+            raise
+        return _extract_ocr_text_boxes(result)
+
+    def _run_rapidocr(engine: Any) -> list[OcrTextBox]:
+        result = engine(image)
+        return _extract_rapidocr_text_boxes(result)
+
+    backend = ocr_backend.strip().lower()
+    if backend not in {"auto", "paddle", "rapidocr"}:
+        raise UserInputError("ocr_backend 必须是 auto、paddle 或 rapidocr。")
+
+    used_backend = backend
     try:
-        result = engine.ocr(image, cls=False)
-    except Exception as exc:
-        message = str(exc)
-        if "OneDnnContext" in message or "fused_conv2d" in message:
-            raise RuntimeError(
-                "PaddleOCR 在当前环境触发了 oneDNN/MKLDNN 卷积推理错误。"
-                "当前脚本已默认禁用 MKLDNN；如果仍复现，请确认 Windows 环境已安装最新依赖，"
-                "并重新创建干净虚拟环境后再试。"
-            ) from exc
-        raise
-    match = _find_exact_ocr_match(result, draft_name)
+        if backend == "rapidocr":
+            text_boxes = _run_rapidocr(ocr_engine or _build_rapidocr())
+        else:
+            used_backend = "paddle"
+            text_boxes = _run_paddle(ocr_engine or _build_paddle_ocr())
+    except RuntimeError as exc:
+        if backend == "auto" and "oneDNN/MKLDNN" in str(exc):
+            _step_log(2, "PaddleOCR 推理失败，正在自动切换到 RapidOCR(ONNXRuntime) 重试。")
+            used_backend = "rapidocr"
+            text_boxes = _run_rapidocr(_build_rapidocr())
+        else:
+            if "oneDNN/MKLDNN" in str(exc):
+                raise RuntimeError(
+                    "PaddleOCR 在当前环境触发了 oneDNN/MKLDNN 卷积推理错误。"
+                    "建议改用 `--ocr-backend rapidocr`，或安装 `rapidocr-onnxruntime onnxruntime` 后重试。"
+                ) from exc
+            raise
+
+    match = _find_exact_text_box(text_boxes, draft_name)
     if match is None:
-        found = ", ".join(box.text for box in _extract_ocr_text_boxes(result)[:10])
-        raise RuntimeError(f"未在局部 OCR 区域找到草稿“{draft_name}”。识别到: {found or '空'}")
+        found = ", ".join(box.text for box in text_boxes[:10])
+        raise RuntimeError(
+            f"未在局部 OCR 区域找到草稿“{draft_name}”。"
+            f"OCR 后端={used_backend}，识别到: {found or '空'}"
+        )
 
     absolute_x = region[0] + match.center_x
     absolute_y = region[1] + match.center_y
-    _step_log(2, f"命中草稿: {match.text}，置信度={match.score:.3f}，坐标=({absolute_x}, {absolute_y})")
+    _step_log(
+        2,
+        f"命中草稿: {match.text}，OCR 后端={used_backend}，"
+        f"置信度={match.score:.3f}，坐标=({absolute_x}, {absolute_y})",
+    )
     return absolute_x, absolute_y
 
 
@@ -296,6 +390,7 @@ def auto_export_jianying(
     anchor_images: dict[str, str | os.PathLike[str]],
     *,
     draft_region: tuple[int, int, int, int] | None = None,
+    ocr_backend: str = "auto",
     editor_timeout: float = 15.0,
     export_timeout: float = 600.0,
     confidence: float = 0.8,
@@ -309,7 +404,11 @@ def auto_export_jianying(
     _step_log(1, "正在初始化窗口环境并最大化剪映。")
     _activate_jianying_window()
 
-    center_x, center_y = _ocr_find_draft_center(draft_name.strip(), draft_region)
+    center_x, center_y = _ocr_find_draft_center(
+        draft_name.strip(),
+        draft_region,
+        ocr_backend=ocr_backend,
+    )
     pyautogui.doubleClick(center_x, center_y)
 
     _step_log(3, f"正在视觉轮询等待编辑器加载，timeout={editor_timeout}s。")
@@ -422,6 +521,7 @@ def _run_ocr_cv_export(args: argparse.Namespace) -> tuple[int, dict]:
         args.name,
         anchors,
         draft_region=_parse_region(args.draft_roi),
+        ocr_backend=args.ocr_backend,
         editor_timeout=args.editor_timeout,
         export_timeout=args.export_timeout,
         confidence=args.confidence,
@@ -440,6 +540,11 @@ def main() -> int:
     parser.add_argument("--timeline-icon", help="Editor/timeline anchor image for OCR/CV flow")
     parser.add_argument("--export-done-icon", help="Export completion anchor image for OCR/CV flow")
     parser.add_argument("--draft-roi", help="Draft-list OCR ROI: x,y,width,height")
+    parser.add_argument(
+        "--ocr-backend",
+        default="auto",
+        help="OCR backend for OCR/CV flow: auto/paddle/rapidocr",
+    )
     parser.add_argument("--editor-timeout", type=float, default=15.0, help="Editor visual wait timeout")
     parser.add_argument("--export-timeout", type=float, default=600.0, help="Export completion timeout")
     parser.add_argument("--confidence", type=float, default=0.8, help="CV confidence threshold")
