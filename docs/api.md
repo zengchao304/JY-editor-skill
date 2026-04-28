@@ -95,6 +95,22 @@ Key scripts:
 - `scripts/auto_exporter.py`
 - `scripts/draft_inspector.py`
 
+### OCR/CV Auto Export
+
+`scripts/auto_exporter.py` keeps the legacy `uiautomation` export path and also exposes a local visual automation path for newer self-rendered JianYing UI:
+
+```bash
+python scripts/auto_exporter.py "DraftName" --ocr-cv \
+  --timeline-icon anchors/timeline_icon.png \
+  --export-done-icon anchors/export_done_icon.png \
+  --draft-roi 320,250,1280,650 --json
+```
+
+- `--timeline-icon` is required and should be a small screenshot that only appears after the editor timeline is ready.
+- `--export-done-icon` is optional but recommended for closed-loop monitoring, for example the “打开文件夹” or close button shown after export completes.
+- `--draft-roi` limits PaddleOCR to `x,y,width,height` around the draft list, which is faster and less error-prone than full-screen OCR.
+- The Python entry point is `auto_export_jianying(draft_name, anchor_images)`; it uses `Ctrl+E` and `Enter`, so keep JianYing visible and avoid mouse/keyboard input while it runs.
+
 ### Draft Inspector CLI
 
 ```bash

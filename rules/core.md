@@ -62,10 +62,19 @@ You can trigger a headless export (using `uiautomation`) without manual clicking
 python <SKILL_ROOT>/scripts/auto_exporter.py "ProjectName" "custom_output.mp4" --res 1080 --fps 60
 ```
 
+For newer self-rendered JianYing UI where UIAutomation cannot see draft cards, use local OCR/CV anchors:
+
+```bash
+python <SKILL_ROOT>/scripts/auto_exporter.py "ProjectName" --ocr-cv \
+  --timeline-icon anchors/timeline_icon.png \
+  --export-done-icon anchors/export_done_icon.png \
+  --draft-roi 320,250,1280,650 --json
+```
+
 ## Constraints
 
 - **Draft Recognition**: The wrapper automatically handles `DraftFolder` structure. Do not manually manipulate `draft_content.json` unless you know exactly what you are doing.
-- **Exporting Requirements**: Auto-exporting only works on **Windows** with **Jianying v5.9 or lower**. It relies on `uiautomation` to interact with the UI.
+- **Exporting Requirements**: Legacy auto-exporting only works on **Windows** with **Jianying v5.9 or lower** and relies on `uiautomation`. OCR/CV mode uses local screenshots, PaddleOCR, grayscale template matching, and mouse/keyboard automation; keep JianYing visible and do not move the mouse/keyboard while it runs.
 - **UI Refresh**: After the script runs, if Jianying is open, the user may need to exit and re-enter the draft to see changes.
 
 ## Quick Edit Execution Template (Standard)

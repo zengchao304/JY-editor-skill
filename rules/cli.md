@@ -50,6 +50,15 @@ python <SKILL_ROOT>/scripts/asset_search.py "雾化" -c transitions
 python <SKILL_ROOT>/scripts/auto_exporter.py "DraftName" "output.mp4" --res 1080 --fps 60
 ```
 
+OCR/CV exporter for self-rendered JianYing UI:
+
+```bash
+python <SKILL_ROOT>/scripts/auto_exporter.py "DraftName" --ocr-cv \
+  --timeline-icon anchors/timeline_icon.png \
+  --export-done-icon anchors/export_done_icon.png \
+  --editor-timeout 20 --export-timeout 900 --json
+```
+
 ## 5) CLI Output Contract
 
 For scripts supporting `--json`, prefer:

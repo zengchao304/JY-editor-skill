@@ -84,6 +84,10 @@ Use these templates and scripts for complex tasks:
 - **Auto Exporter**: Headless export of a draft to MP4/SRT:
   ```bash
   python <SKILL_ROOT>/scripts/auto_exporter.py "DraftName" "output.mp4" --res 1080 --fps 60
+  # OCR/CV mode for newer self-rendered JianYing UI:
+  python <SKILL_ROOT>/scripts/auto_exporter.py "DraftName" --ocr-cv \
+    --timeline-icon anchors/timeline_icon.png \
+    --export-done-icon anchors/export_done_icon.png --json
   # For SRT only:
   python <SKILL_ROOT>/scripts/jy_wrapper.py export-srt --name "DraftName"
   ```
