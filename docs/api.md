@@ -99,6 +99,14 @@ Key scripts:
 
 `scripts/auto_exporter.py` keeps the legacy `uiautomation` export path and also exposes a local visual automation path for newer self-rendered JianYing UI:
 
+If OCR finds no drafts or the default region misses the draft list, measure the ROI first on the visible desktop:
+
+```bash
+python scripts/measure_ocr_roi.py --output anchors/draft_roi.png
+```
+
+Drag the draft-list rectangle in the screenshot preview. The tool prints `x,y,width,height` and saves an annotated screenshot so the measured region can be reused with `--draft-roi`.
+
 ```bash
 python scripts/auto_exporter.py "DraftName" --ocr-cv \
   --timeline-icon anchors/timeline_icon.png \
@@ -109,7 +117,16 @@ python scripts/auto_exporter.py "DraftName" --ocr-cv \
 - `--timeline-icon` is required and should be a small screenshot that only appears after the editor timeline is ready.
 - `--export-done-icon` is optional but recommended for closed-loop monitoring, for example the “打开文件夹” or close button shown after export completes.
 - `--draft-roi` limits PaddleOCR to `x,y,width,height` around the draft list, which is faster and less error-prone than full-screen OCR.
+- `scripts/measure_ocr_roi.py --json` emits the measured ROI and annotated screenshot path as JSON for automation.
 - The Python entry point is `auto_export_jianying(draft_name, anchor_images)`; it uses `Ctrl+E` and `Enter`, so keep JianYing visible and avoid mouse/keyboard input while it runs.
+
+Windows manual ROI verification:
+
+1. Open JianYing on the home page and keep the target draft list visible.
+2. Run `python scripts/measure_ocr_roi.py --output anchors/draft_roi.png` in a local desktop session.
+3. Drag only the draft-list area, not the sidebar or title bar.
+4. Confirm `anchors/draft_roi.png` highlights the expected area.
+5. Copy the printed `x,y,width,height` into `scripts/auto_exporter.py --draft-roi`.
 
 ### Draft Inspector CLI
 

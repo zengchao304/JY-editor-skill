@@ -138,8 +138,10 @@ Skill 默认认为您的剪映安装在 C 盘默认位置：
    自动导出脚本模拟了鼠标键盘操作。
    - 运行导出时，请**不要**动鼠标和键盘。
    - 目前仅支持 **剪映 5.9 或更早版本** (新版本弹窗太多容易干扰脚本)。
+   - 如果 OCR/CV 模式识别不到首页草稿列表，先在剪映首页运行 ROI 测量工具，拖拽草稿列表区域并记录输出：
+     `python scripts/measure_ocr_roi.py --output anchors/draft_roi.png`
    - 新版自绘界面可尝试 OCR/CV 模式：先截取编辑器时间轴锚点和导出完成锚点，再运行：
-     `python scripts/auto_exporter.py "草稿名" --ocr-cv --timeline-icon anchors/timeline_icon.png --export-done-icon anchors/export_done_icon.png --json`
+     `python scripts/auto_exporter.py "草稿名" --ocr-cv --timeline-icon anchors/timeline_icon.png --export-done-icon anchors/export_done_icon.png --draft-roi 320,250,1280,650 --json`
 
 ## 🔄 如何更新 (Update)
 
