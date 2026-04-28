@@ -109,11 +109,17 @@ def _build_rapidocr() -> Any:
 
 
 def _default_draft_roi(screen_width: int, screen_height: int) -> tuple[int, int, int, int]:
+    measured_width = 1920
+    measured_height = 1080
+    measured_roi = (240, 550, 1150, 327)
+    scale_x = screen_width / measured_width
+    scale_y = screen_height / measured_height
+    x, y, width, height = measured_roi
     return (
-        int(screen_width * 0.18),
-        int(screen_height * 0.32),
-        int(screen_width * 0.64),
-        int(screen_height * 0.56),
+        round(x * scale_x),
+        round(y * scale_y),
+        round(width * scale_x),
+        round(height * scale_y),
     )
 
 

@@ -29,8 +29,9 @@ class TestAutoExporterHelpers(unittest.TestCase):
         with self.assertRaises(UserInputError):
             _parse_region("10,20,0,400")
 
-    def test_default_draft_roi_middle_lower_area(self):
-        self.assertEqual(_default_draft_roi(1000, 800), (180, 256, 640, 448))
+    def test_default_draft_roi_uses_measured_1080p_region(self):
+        self.assertEqual(_default_draft_roi(1920, 1080), (240, 550, 1150, 327))
+        self.assertEqual(_default_draft_roi(960, 540), (120, 275, 575, 164))
 
     def test_extract_ocr_text_boxes_and_exact_match(self):
         ocr_result = [
