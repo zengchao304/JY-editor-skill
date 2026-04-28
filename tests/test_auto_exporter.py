@@ -3,6 +3,7 @@
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 skill_root = os.path.dirname(current_dir)
@@ -11,9 +12,11 @@ if scripts_path not in sys.path:
     sys.path.insert(0, scripts_path)
 
 from auto_exporter import (  # noqa: E402
+    _build_paddle_ocr,
     _default_draft_roi,
     _extract_ocr_text_boxes,
     _find_exact_ocr_match,
+    _ocr_find_draft_center,
     _parse_region,
 )
 from utils.errors import UserInputError  # noqa: E402
@@ -47,6 +50,53 @@ class TestAutoExporterHelpers(unittest.TestCase):
         self.assertEqual((boxes[0].center_x, boxes[0].center_y), (60, 30))
         self.assertEqual(_find_exact_ocr_match(ocr_result, "示例草稿"), boxes[0])
         self.assertIsNone(_find_exact_ocr_match(ocr_result, "示例"))
+
+    def test_build_paddle_ocr_disables_mkldnn_when_supported(self):
+        recorded = {}
+
+        def fake_paddleocr(**kwargs):
+            recorded.update(kwargs)
+            return "engine"
+
+        with patch("auto_exporter._import_gui_dependencies", return_value=(None, None, None, None, fake_paddleocr)):
+            engine = _build_paddle_ocr()
+
+        self.assertEqual(engine, "engine")
+        self.assertFalse(recorded["use_angle_cls"])
+        self.assertEqual(recorded["lang"], "ch")
+        self.assertFalse(recorded["enable_mkldnn"])
+
+    def test_ocr_find_draft_center_wraps_onednn_runtime_error(self):
+        class FakePyAutoGui:
+            @staticmethod
+            def screenshot(region=None):
+                return "fake-image"
+
+        class FakeCv2:
+            COLOR_RGB2BGR = object()
+
+            @staticmethod
+            def cvtColor(image, mode):
+                return image
+
+        class FakeNp:
+            @staticmethod
+            def array(value):
+                return value
+
+        class FakeEngine:
+            @staticmethod
+            def ocr(image, cls=False):
+                raise RuntimeError("OneDnnContext does not have the input Filter in fused_conv2d")
+
+        with patch(
+            "auto_exporter._import_gui_dependencies",
+            return_value=(FakeCv2, FakeNp, FakePyAutoGui, None, None),
+        ):
+            with self.assertRaises(RuntimeError) as ctx:
+                _ocr_find_draft_center("示例草稿", region=(0, 0, 100, 100), ocr_engine=FakeEngine())
+
+        self.assertIn("oneDNN/MKLDNN", str(ctx.exception))
 
 
 if __name__ == "__main__":

@@ -58,12 +58,34 @@ def _import_draft_module() -> Any:
 
 def _build_paddle_ocr() -> Any:
     _, _, _, _, paddle_ocr = _import_gui_dependencies()
-    try:
-        return paddle_ocr(use_angle_cls=False, lang="ch", show_log=False)
-    except ValueError:
-        return paddle_ocr(use_angle_cls=False, lang="ch")
-    except TypeError:
-        return paddle_ocr(use_angle_cls=False, lang="ch")
+    init_variants = [
+        {
+            "use_angle_cls": False,
+            "lang": "ch",
+            "show_log": False,
+            # Windows CPU 上某些 Paddle/PaddleOCR 组合会在 oneDNN fused_conv2d
+            # 路径崩溃，这里默认禁用 MKLDNN 以换取稳定性。
+            "enable_mkldnn": False,
+        },
+        {
+            "use_angle_cls": False,
+            "lang": "ch",
+            "enable_mkldnn": False,
+        },
+        {
+            "use_angle_cls": False,
+            "lang": "ch",
+        },
+    ]
+    last_error: Exception | None = None
+    for kwargs in init_variants:
+        try:
+            return paddle_ocr(**kwargs)
+        except (TypeError, ValueError) as exc:
+            last_error = exc
+    if last_error is not None:
+        raise last_error
+    return paddle_ocr(use_angle_cls=False, lang="ch")
 
 
 def _default_draft_roi(screen_width: int, screen_height: int) -> tuple[int, int, int, int]:
@@ -210,7 +232,17 @@ def _ocr_find_draft_center(
     screenshot = pyautogui.screenshot(region=region)
     image = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
     engine = ocr_engine or _build_paddle_ocr()
-    result = engine.ocr(image, cls=False)
+    try:
+        result = engine.ocr(image, cls=False)
+    except Exception as exc:
+        message = str(exc)
+        if "OneDnnContext" in message or "fused_conv2d" in message:
+            raise RuntimeError(
+                "PaddleOCR 在当前环境触发了 oneDNN/MKLDNN 卷积推理错误。"
+                "当前脚本已默认禁用 MKLDNN；如果仍复现，请确认 Windows 环境已安装最新依赖，"
+                "并重新创建干净虚拟环境后再试。"
+            ) from exc
+        raise
     match = _find_exact_ocr_match(result, draft_name)
     if match is None:
         found = ", ".join(box.text for box in _extract_ocr_text_boxes(result)[:10])
