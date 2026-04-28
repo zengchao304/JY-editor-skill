@@ -28,6 +28,9 @@ def _step_log(step: int, message: str) -> None:
 
 
 def _import_gui_dependencies() -> tuple[Any, Any, Any, Any, Any]:
+    # 显式关闭 Paddle 全局 MKLDNN 标志，避免 Windows CPU 上意外走到
+    # oneDNN fused_conv2d 加速路径。
+    os.environ.setdefault("FLAGS_use_mkldnn", "0")
     try:
         import cv2  # noqa: F401
         import numpy as np
