@@ -279,19 +279,52 @@ def _is_onednn_runtime_error(exc: Exception) -> bool:
     return "OneDnnContext" in message or "fused_conv2d" in message
 
 
+def _save_ocr_debug_images(
+    screenshot: Any,
+    region: tuple[int, int, int, int],
+    debug_dir: str | os.PathLike[str],
+) -> None:
+    cv2, np, pyautogui, _, _ = _import_gui_dependencies()
+    debug_path = Path(debug_dir).expanduser().resolve()
+    debug_path.mkdir(parents=True, exist_ok=True)
+
+    roi_path = debug_path / "draft_roi.png"
+    screenshot.save(roi_path)
+
+    full_screen = pyautogui.screenshot()
+    annotated = cv2.cvtColor(np.array(full_screen), cv2.COLOR_RGB2BGR)
+    x, y, width, height = region
+    cv2.rectangle(annotated, (x, y), (x + width, y + height), (0, 0, 255), 3)
+    cv2.imwrite(str(debug_path / "draft_roi_annotated.png"), annotated)
+
+
 def _ocr_find_draft_center(
     draft_name: str,
     region: tuple[int, int, int, int] | None = None,
     ocr_engine: Any | None = None,
     ocr_backend: str = "auto",
+    debug_dir: str | os.PathLike[str] | None = None,
 ) -> tuple[int, int]:
-    cv2, np, pyautogui, _, _ = _import_gui_dependencies()
+    backend = ocr_backend.strip().lower()
+    if backend not in {"auto", "paddle", "rapidocr"}:
+        raise UserInputError("ocr_backend 必须是 auto、paddle 或 rapidocr。")
+
+    cv2 = np = gw = paddle_ocr = None
+    if backend == "rapidocr":
+        import pyautogui
+        import cv2  # type: ignore
+        import numpy as np  # type: ignore
+    else:
+        cv2, np, pyautogui, gw, paddle_ocr = _import_gui_dependencies()
+
     if region is None:
         screen_width, screen_height = pyautogui.size()
         region = _default_draft_roi(screen_width, screen_height)
 
     _step_log(2, f"正在局部区域 OCR 寻找草稿: {draft_name}，ROI={region}")
     screenshot = pyautogui.screenshot(region=region)
+    if debug_dir:
+        _save_ocr_debug_images(screenshot, region, debug_dir)
     image = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
 
     def _run_paddle(engine: Any) -> list[OcrTextBox]:
@@ -308,10 +341,6 @@ def _ocr_find_draft_center(
     def _run_rapidocr(engine: Any) -> list[OcrTextBox]:
         result = engine(image)
         return _extract_rapidocr_text_boxes(result)
-
-    backend = ocr_backend.strip().lower()
-    if backend not in {"auto", "paddle", "rapidocr"}:
-        raise UserInputError("ocr_backend 必须是 auto、paddle 或 rapidocr。")
 
     used_backend = backend
     try:
@@ -391,6 +420,7 @@ def auto_export_jianying(
     *,
     draft_region: tuple[int, int, int, int] | None = None,
     ocr_backend: str = "auto",
+    ocr_debug_dir: str | os.PathLike[str] | None = None,
     editor_timeout: float = 15.0,
     export_timeout: float = 600.0,
     confidence: float = 0.8,
@@ -408,6 +438,7 @@ def auto_export_jianying(
         draft_name.strip(),
         draft_region,
         ocr_backend=ocr_backend,
+        debug_dir=ocr_debug_dir,
     )
     pyautogui.doubleClick(center_x, center_y)
 
@@ -522,6 +553,7 @@ def _run_ocr_cv_export(args: argparse.Namespace) -> tuple[int, dict]:
         anchors,
         draft_region=_parse_region(args.draft_roi),
         ocr_backend=args.ocr_backend,
+        ocr_debug_dir=args.ocr_debug_dir,
         editor_timeout=args.editor_timeout,
         export_timeout=args.export_timeout,
         confidence=args.confidence,
@@ -544,6 +576,10 @@ def main() -> int:
         "--ocr-backend",
         default="auto",
         help="OCR backend for OCR/CV flow: auto/paddle/rapidocr",
+    )
+    parser.add_argument(
+        "--ocr-debug-dir",
+        help="Save OCR ROI debug images into this directory",
     )
     parser.add_argument("--editor-timeout", type=float, default=15.0, help="Editor visual wait timeout")
     parser.add_argument("--export-timeout", type=float, default=600.0, help="Export completion timeout")

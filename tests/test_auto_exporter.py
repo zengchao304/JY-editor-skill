@@ -151,6 +151,54 @@ class TestAutoExporterHelpers(unittest.TestCase):
 
         self.assertEqual(center, (160, 230))
 
+    def test_ocr_find_draft_center_passes_debug_dir_without_breaking_match(self):
+        class FakePyAutoGui:
+            @staticmethod
+            def screenshot(region=None):
+                return "fake-image"
+
+        class FakeCv2:
+            COLOR_RGB2BGR = object()
+
+            @staticmethod
+            def cvtColor(image, mode):
+                return image
+
+        class FakeNp:
+            @staticmethod
+            def array(value):
+                return value
+
+        class FakeEngine:
+            @staticmethod
+            def ocr(image, cls=False):
+                return [
+                    [
+                        [
+                            [[10, 10], [110, 10], [110, 50], [10, 50]],
+                            ("示例草稿", 0.98),
+                        ]
+                    ]
+                ]
+
+        with patch(
+            "auto_exporter._import_gui_dependencies",
+            return_value=(FakeCv2, FakeNp, FakePyAutoGui, None, None),
+        ), patch(
+            "auto_exporter._save_ocr_debug_images",
+            return_value=None,
+        ) as debug_mock:
+            center = _ocr_find_draft_center(
+                "示例草稿",
+                region=(100, 200, 300, 400),
+                ocr_engine=FakeEngine(),
+                ocr_backend="paddle",
+                debug_dir="debug-out",
+            )
+
+        self.assertEqual(center, (160, 230))
+        debug_mock.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
