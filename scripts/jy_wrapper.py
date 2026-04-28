@@ -4,13 +4,12 @@ JianYing Editor Skill - High Level Wrapper (Mixin Based)
 """
 
 import os
-import sys
-import uuid
-from typing import Union, Optional
+from typing import Union
 
 # 环境初始化
 from utils.env_setup import setup_env
 setup_env()
+from utils.console import safe_print
 
 # 导入工具函数
 from utils.constants import SYNONYMS
@@ -55,7 +54,7 @@ class JyProject(JyProjectBase, MediaOpsMixin, TextOpsMixin, VfxOpsMixin, Mocking
         draft_path = os.path.join(self.root, self.name)
         if os.path.exists(draft_path):
             os.utime(draft_path, None)
-        print(f"✅ Project '{self.name}' saved and patched.")
+        safe_print(f"[OK] Project '{self.name}' saved and patched.")
         return {"status": "SUCCESS", "draft_path": draft_path}
 
 # 导出工具函数以便向下兼容
@@ -65,6 +64,6 @@ if __name__ == "__main__":
     # 测试代码
     try:
         project = JyProject("Refactor_Test_Project", overwrite=True)
-        print("🚀 Refactored JyProject initialized successfully.")
+        safe_print("[INFO] Refactored JyProject initialized successfully.")
     except Exception as e:
-        print(f"❌ Initialization failed: {e}")
+        safe_print(f"[ERROR] Initialization failed: {e}")
