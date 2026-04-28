@@ -1,5 +1,6 @@
 import argparse
 import os
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -109,18 +110,7 @@ def _build_rapidocr() -> Any:
 
 
 def _default_draft_roi(screen_width: int, screen_height: int) -> tuple[int, int, int, int]:
-    measured_width = 1920
-    measured_height = 1080
-    measured_roi = (240, 550, 1150, 327)
-    scale_x = screen_width / measured_width
-    scale_y = screen_height / measured_height
-    x, y, width, height = measured_roi
-    return (
-        round(x * scale_x),
-        round(y * scale_y),
-        round(width * scale_x),
-        round(height * scale_y),
-    )
+    return (240, 550, 1150, 327)
 
 
 def _parse_region(value: str | None) -> tuple[int, int, int, int] | None:
@@ -244,26 +234,47 @@ def _find_exact_ocr_match(ocr_result: Any, draft_name: str) -> OcrTextBox | None
     return None
 
 
-def _extract_rapidocr_text_boxes(ocr_result: Any) -> list[OcrTextBox]:
+def _iter_rapidocr_items(ocr_result: Any) -> list[tuple[Any, str, float]]:
     boxes = getattr(ocr_result, "boxes", None)
     txts = getattr(ocr_result, "txts", None)
     scores = getattr(ocr_result, "scores", None)
-    if boxes is None or txts is None:
+    if boxes is not None and txts is not None:
+        normalized_scores = scores if scores is not None else [1.0] * len(txts)
+        return list(zip(boxes, txts, normalized_scores))
+
+    if isinstance(ocr_result, tuple) and ocr_result and isinstance(ocr_result[0], list):
+        candidates = ocr_result[0]
+    elif isinstance(ocr_result, list):
+        candidates = ocr_result
+    else:
         return []
 
-    normalized_scores = scores if scores is not None else [1.0] * len(txts)
+    items: list[tuple[Any, str, float]] = []
+    for candidate in candidates:
+        if not isinstance(candidate, (list, tuple)) or len(candidate) < 2:
+            continue
+        box = candidate[0]
+        text = str(candidate[1])
+        try:
+            score = float(candidate[2]) if len(candidate) > 2 else 1.0
+        except (TypeError, ValueError):
+            score = 1.0
+        items.append((box, text, score))
+    return items
+
+
+def _extract_rapidocr_text_boxes(ocr_result: Any) -> list[OcrTextBox]:
     extracted: list[OcrTextBox] = []
-    for box, text, score in zip(boxes, txts, normalized_scores):
+    for box, text, score in _iter_rapidocr_items(ocr_result):
         try:
             center_x, center_y = _box_center(box)
             normalized_box = tuple((float(point[0]), float(point[1])) for point in box)
-            normalized_score = float(score)
         except (TypeError, ValueError):
             continue
         extracted.append(
             OcrTextBox(
-                text=str(text).strip(),
-                score=normalized_score,
+                text=text.strip(),
+                score=score,
                 center_x=center_x,
                 center_y=center_y,
                 box=normalized_box,
@@ -272,10 +283,18 @@ def _extract_rapidocr_text_boxes(ocr_result: Any) -> list[OcrTextBox]:
     return extracted
 
 
+def _normalize_draft_match_text(value: str) -> str:
+    return re.sub(r"[\s_]+", "_", value.strip()).casefold()
+
+
 def _find_exact_text_box(boxes: list[OcrTextBox], draft_name: str) -> OcrTextBox | None:
     target = draft_name.strip()
+    normalized_target = _normalize_draft_match_text(target)
     for text_box in boxes:
         if text_box.text == target:
+            return text_box
+    for text_box in boxes:
+        if _normalize_draft_match_text(text_box.text) == normalized_target:
             return text_box
     return None
 

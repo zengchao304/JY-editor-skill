@@ -15,7 +15,9 @@ from auto_exporter import (  # noqa: E402
     _build_paddle_ocr,
     _default_draft_roi,
     _extract_ocr_text_boxes,
+    _extract_rapidocr_text_boxes,
     _find_exact_ocr_match,
+    _find_exact_text_box,
     _ocr_find_draft_center,
     _parse_region,
 )
@@ -29,9 +31,9 @@ class TestAutoExporterHelpers(unittest.TestCase):
         with self.assertRaises(UserInputError):
             _parse_region("10,20,0,400")
 
-    def test_default_draft_roi_uses_measured_1080p_region(self):
+    def test_default_draft_roi_uses_measured_absolute_region(self):
         self.assertEqual(_default_draft_roi(1920, 1080), (240, 550, 1150, 327))
-        self.assertEqual(_default_draft_roi(960, 540), (120, 275, 575, 164))
+        self.assertEqual(_default_draft_roi(1707, 920), (240, 550, 1150, 327))
 
     def test_extract_ocr_text_boxes_and_exact_match(self):
         ocr_result = [
@@ -51,6 +53,29 @@ class TestAutoExporterHelpers(unittest.TestCase):
         self.assertEqual((boxes[0].center_x, boxes[0].center_y), (60, 30))
         self.assertEqual(_find_exact_ocr_match(ocr_result, "示例草稿"), boxes[0])
         self.assertIsNone(_find_exact_ocr_match(ocr_result, "示例"))
+
+    def test_extract_rapidocr_tuple_result_and_match_underscore_as_space(self):
+        rapid_result = (
+            [
+                [
+                    [[65.0, 62.0], [163.0, 63.0], [163.0, 77.0], [65.0, 76.0]],
+                    "Hello JianYing_V3",
+                    0.976,
+                ],
+                [
+                    [[65.0, 110.0], [174.0, 111.0], [174.0, 125.0], [65.0, 124.0]],
+                    "Hello JianYing_V3_B",
+                    0.973,
+                ],
+            ],
+            [1.54, 0.01, 0.84],
+        )
+
+        boxes = _extract_rapidocr_text_boxes(rapid_result)
+        self.assertEqual(len(boxes), 2)
+        self.assertEqual(boxes[0].text, "Hello JianYing_V3")
+        self.assertEqual((boxes[0].center_x, boxes[0].center_y), (114, 70))
+        self.assertEqual(_find_exact_text_box(boxes, "Hello_JianYing_V3"), boxes[0])
 
     def test_build_paddle_ocr_disables_mkldnn_when_supported(self):
         recorded = {}
